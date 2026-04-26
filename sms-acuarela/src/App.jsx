@@ -17,6 +17,7 @@ const emptyData = {
 };
 
 export default function App() {
+  const [cycles, setCycles] = useState(() => CYCLES);
   const [selectedCycleId, setSelectedCycleId] = useState("1");
   const [fileName, setFileName] = useState("");
   const [excelData, setExcelData] = useState(emptyData);
@@ -28,7 +29,7 @@ export default function App() {
   const [progress, setProgress] = useState({ current: 0, total: 0 });
   const [showConfetti, setShowConfetti] = useState(false);
 
-  const selectedCycle = CYCLES[selectedCycleId];
+  const selectedCycle = cycles[selectedCycleId];
   const message = useMemo(() => buildSmsMessage(selectedCycle), [selectedCycle]);
 
   const fixedCount = useMemo(
@@ -136,6 +137,16 @@ export default function App() {
     }
   }
 
+  function handleCycleSave(cycleId, updates) {
+    setCycles((currentCycles) => ({
+      ...currentCycles,
+      [cycleId]: {
+        ...currentCycles[cycleId],
+        ...updates,
+      },
+    }));
+  }
+
   const messageTooLong = message.length > SMS_LIMIT;
   const canSend =
     parseState === "done" &&
@@ -167,9 +178,10 @@ export default function App() {
           />
 
           <CycleSelector
-            cycles={CYCLES}
+            cycles={cycles}
             selectedCycleId={selectedCycleId}
             onSelect={setSelectedCycleId}
+            onSaveCycle={handleCycleSave}
           />
 
           <MessagePreview message={message} limit={SMS_LIMIT} stats={stats} />

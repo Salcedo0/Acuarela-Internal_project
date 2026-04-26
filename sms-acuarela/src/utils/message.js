@@ -22,7 +22,7 @@ export function buildSmsMessage(cycle) {
   const fechaSuspension = toShortDate(cycle.fechaSuspension);
 
   // Version compacta para mantener el SMS dentro de un solo mensaje.
-  return `Acueducto La Acuarela: Factura con pago oportuno hasta ${fechaOportuna}. Evite suspension: pague antes del ${fechaSuspension}. Info: 3206813041`;
+  return `Acueducto La Acuarela: Pago oportuno hasta ${fechaOportuna}. Evite suspension: pague antes de ${fechaSuspension}. Pague en linea: https://acueductolaacuarela.com/pago-factura`;
 }
 
 function toShortDate(dateText) {

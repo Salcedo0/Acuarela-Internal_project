@@ -1,5 +1,41 @@
-export default function CycleSelector({ cycles, selectedCycleId, onSelect }) {
+import { useEffect, useState } from "react";
+
+const DATE_FIELDS = [
+  { key: "fechaSMS", label: "SMS" },
+  { key: "fechaOportuna", label: "Pago oportuno" },
+  { key: "fechaSuspension", label: "Suspension" },
+  { key: "fechaMaxima", label: "Fecha maxima" },
+];
+
+export default function CycleSelector({
+  cycles,
+  selectedCycleId,
+  onSelect,
+  onSaveCycle,
+}) {
   const selectedCycle = cycles[selectedCycleId];
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(() => createDraft(selectedCycle));
+
+  useEffect(() => {
+    setEditing(false);
+    setDraft(createDraft(selectedCycle));
+  }, [selectedCycleId, selectedCycle]);
+
+  function startEditing() {
+    setDraft(createDraft(selectedCycle));
+    setEditing(true);
+  }
+
+  function cancelEditing() {
+    setDraft(createDraft(selectedCycle));
+    setEditing(false);
+  }
+
+  function saveEditing() {
+    onSaveCycle(selectedCycleId, normalizeDraft(draft));
+    setEditing(false);
+  }
 
   return (
     <section className="panel">
@@ -28,8 +64,41 @@ export default function CycleSelector({ cycles, selectedCycleId, onSelect }) {
       <div className="cycle-detail">
         {selectedCycle.pendiente ? (
           <p>Fechas pendientes.</p>
+        ) : editing ? (
+          <div className="cycle-edit-form">
+            {DATE_FIELDS.map((field) => (
+              <label className="cycle-field" key={field.key}>
+                <span>{field.label}</span>
+                <input
+                  type="text"
+                  value={draft[field.key]}
+                  onChange={(event) =>
+                    setDraft((current) => ({
+                      ...current,
+                      [field.key]: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+            ))}
+
+            <div className="cycle-edit-actions">
+              <button type="button" className="ghost-button" onClick={cancelEditing}>
+                Cancelar
+              </button>
+              <button type="button" className="save-cycle-button" onClick={saveEditing}>
+                Guardar
+              </button>
+            </div>
+          </div>
         ) : (
           <>
+            <div className="cycle-detail-header">
+              <strong>{selectedCycle.name}</strong>
+              <button type="button" className="ghost-button" onClick={startEditing}>
+                Editar
+              </button>
+            </div>
             <Detail label="SMS" value={selectedCycle.fechaSMS} />
             <Detail label="Pago oportuno" value={selectedCycle.fechaOportuna} />
             <Detail label="Suspension" value={selectedCycle.fechaSuspension} />
@@ -41,9 +110,23 @@ export default function CycleSelector({ cycles, selectedCycleId, onSelect }) {
   );
 }
 
+function createDraft(cycle) {
+  return DATE_FIELDS.reduce((draft, field) => {
+    draft[field.key] = cycle?.[field.key] || "";
+    return draft;
+  }, {});
+}
+
+function normalizeDraft(draft) {
+  return DATE_FIELDS.reduce((updates, field) => {
+    updates[field.key] = draft[field.key].trim();
+    return updates;
+  }, {});
+}
+
 function Detail({ label, value }) {
   return (
-    <div>
+    <div className="cycle-row">
       <span>{label}</span>
       <strong>{value}</strong>
     </div>
