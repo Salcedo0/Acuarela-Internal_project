@@ -9,18 +9,21 @@ const DATE_FIELDS = [
 
 export default function CycleSelector({
   cycles,
-  selectedCycleId,
+  activeCycleId,
+  selectedCycleIds,
+  multiCycleEnabled,
+  onMultiCycleChange,
   onSelect,
   onSaveCycle,
 }) {
-  const selectedCycle = cycles[selectedCycleId];
+  const selectedCycle = cycles[activeCycleId];
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(() => createDraft(selectedCycle));
 
   useEffect(() => {
     setEditing(false);
     setDraft(createDraft(selectedCycle));
-  }, [selectedCycleId, selectedCycle]);
+  }, [activeCycleId, selectedCycle]);
 
   function startEditing() {
     setDraft(createDraft(selectedCycle));
@@ -33,7 +36,7 @@ export default function CycleSelector({
   }
 
   function saveEditing() {
-    onSaveCycle(selectedCycleId, normalizeDraft(draft));
+    onSaveCycle(activeCycleId, normalizeDraft(draft));
     setEditing(false);
   }
 
@@ -46,19 +49,34 @@ export default function CycleSelector({
         </div>
       </div>
 
+      <label className="multi-cycle-toggle">
+        <input
+          type="checkbox"
+          checked={multiCycleEnabled}
+          onChange={(event) => onMultiCycleChange(event.target.checked)}
+        />
+        <span>Seleccionar varios ciclos</span>
+      </label>
+
       <div className="cycle-tabs" role="tablist" aria-label="Ciclos de cobro">
-        {Object.entries(cycles).map(([cycleId, cycle]) => (
-          <button
-            key={cycleId}
-            type="button"
-            className={cycleId === selectedCycleId ? "active" : ""}
-            disabled={cycle.pendiente}
-            title={cycle.pendiente ? "Fechas pendientes" : cycle.name}
-            onClick={() => onSelect(cycleId)}
-          >
-            {cycle.name.replace("Ciclo ", "")}
-          </button>
-        ))}
+        {Object.entries(cycles).map(([cycleId, cycle]) => {
+          const isSelected = selectedCycleIds.includes(cycleId);
+          const isActive = activeCycleId === cycleId;
+
+          return (
+            <button
+              key={cycleId}
+              type="button"
+              className={`${isSelected ? "active" : ""} ${isActive ? "focused" : ""}`}
+              disabled={cycle.pendiente}
+              title={cycle.pendiente ? "Fechas pendientes" : cycle.name}
+              aria-pressed={isSelected}
+              onClick={() => onSelect(cycleId)}
+            >
+              {cycle.name.replace("Ciclo ", "")}
+            </button>
+          );
+        })}
       </div>
 
       <div className="cycle-detail">

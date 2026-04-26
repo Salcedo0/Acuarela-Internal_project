@@ -6,6 +6,8 @@ export default function SendButton({
   status,
   count,
   cycleName,
+  cycleCount,
+  totalMessages,
   onConfirm,
 }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -47,8 +49,11 @@ export default function SendButton({
           >
             <p className="eyebrow">Confirmar envio</p>
             <h2 id="confirm-title">
-              ¿Enviar SMS a {count} usuarios del {cycleName}?
+              ¿Enviar SMS a {count} usuarios {cycleCount > 1 ? `en ${cycleCount} ciclos` : `del ${cycleName}`}?
             </h2>
+            {cycleCount > 1 && (
+              <p className="confirm-note">{totalMessages} SMS en total.</p>
+            )}
             <div className="modal-actions">
               <button type="button" className="ghost-button" onClick={closeConfirm}>
                 Cancelar

@@ -14,6 +14,7 @@ export default function LogPanel({ sent, failed, skipped, progress, status }) {
     () => [
       ...sent.map((row) => ({
         estado: "enviado",
+        ciclo: row.cycleName,
         telefono: row.number,
         cedula: row.cedula,
         direccion: row.direccion,
@@ -21,6 +22,7 @@ export default function LogPanel({ sent, failed, skipped, progress, status }) {
       })),
       ...failed.map((row) => ({
         estado: "fallido",
+        ciclo: row.cycleName,
         telefono: row.number,
         cedula: row.cedula,
         direccion: row.direccion,
@@ -28,6 +30,7 @@ export default function LogPanel({ sent, failed, skipped, progress, status }) {
       })),
       ...skipped.map((row) => ({
         estado: "no enviado",
+        ciclo: "",
         telefono: row.telefonoOriginal,
         cedula: row.cedula,
         direccion: row.direccion,
@@ -45,7 +48,7 @@ export default function LogPanel({ sent, failed, skipped, progress, status }) {
   }
 
   function exportCsv() {
-    const headers = ["estado", "telefono", "cedula", "direccion", "detalle"];
+    const headers = ["estado", "ciclo", "telefono", "cedula", "direccion", "detalle"];
     const lines = [
       headers.join(","),
       ...csvRows.map((row) =>
@@ -99,7 +102,8 @@ export default function LogPanel({ sent, failed, skipped, progress, status }) {
       >
         {sent.map((row) => (
           <LogItem
-            key={`${row.number}-${row.fila}`}
+            key={`${row.cycleId}-${row.number}-${row.fila}`}
+            cycleName={row.cycleName}
             number={row.number}
             cedula={row.cedula}
             direccion={row.direccion}
@@ -117,7 +121,8 @@ export default function LogPanel({ sent, failed, skipped, progress, status }) {
       >
         {failed.map((row) => (
           <LogItem
-            key={`${row.number}-${row.fila}`}
+            key={`${row.cycleId}-${row.number}-${row.fila}`}
+            cycleName={row.cycleName}
             number={row.number}
             cedula={row.cedula}
             direccion={row.direccion}
@@ -163,9 +168,10 @@ function LogSection({ title, tone, count, open, onToggle, children }) {
   );
 }
 
-function LogItem({ number, cedula, direccion, status }) {
+function LogItem({ cycleName, number, cedula, direccion, status }) {
   return (
     <article className="log-item">
+      <span>{cycleName || "Sin ciclo"}</span>
       <code>{number}</code>
       <span>{cedula || "Sin cedula"}</span>
       <span>{direccion || "Sin direccion"}</span>

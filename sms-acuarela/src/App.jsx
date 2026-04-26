@@ -18,7 +18,9 @@ const emptyData = {
 
 export default function App() {
   const [cycles, setCycles] = useState(() => CYCLES);
-  const [selectedCycleId, setSelectedCycleId] = useState("1");
+  const [multiCycleEnabled, setMultiCycleEnabled] = useState(false);
+  const [activeCycleId, setActiveCycleId] = useState("1");
+  const [selectedCycleIds, setSelectedCycleIds] = useState(["1"]);
   const [fileName, setFileName] = useState("");
   const [excelData, setExcelData] = useState(emptyData);
   const [parseState, setParseState] = useState("idle");
@@ -29,8 +31,18 @@ export default function App() {
   const [progress, setProgress] = useState({ current: 0, total: 0 });
   const [showConfetti, setShowConfetti] = useState(false);
 
-  const selectedCycle = cycles[selectedCycleId];
-  const message = useMemo(() => buildSmsMessage(selectedCycle), [selectedCycle]);
+  const activeCycle = cycles[activeCycleId];
+  const selectedMessages = useMemo(
+    () =>
+      Object.entries(cycles)
+        .filter(([cycleId, cycle]) => selectedCycleIds.includes(cycleId) && !cycle.pendiente)
+        .map(([cycleId, cycle]) => ({
+          cycleId,
+          cycleName: cycle.name,
+          message: buildSmsMessage(cycle),
+        })),
+    [cycles, selectedCycleIds]
+  );
 
   const fixedCount = useMemo(
     () => excelData.invalidos.filter((row) => row.razon === "Número fijo").length,
@@ -69,72 +81,121 @@ export default function App() {
 
   async function sendAllSms() {
     const recipients = excelData.validos;
+    const messagesToSend = selectedMessages;
+    const totalSends = recipients.length * messagesToSend.length;
+    let processed = 0;
+
     setSendState("loading");
     setSentLogs([]);
     setFailedLogs([]);
-    setProgress({ current: 0, total: recipients.length });
+    setProgress({ current: 0, total: totalSends });
     setShowConfetti(false);
 
     const sent = [];
     const failed = [];
 
-    for (let index = 0; index < recipients.length; index += 1) {
-      const recipient = recipients[index];
+    for (const cycleMessage of messagesToSend) {
+      for (const recipient of recipients) {
+        processed += 1;
 
-      try {
-        const response = await fetch(SEND_ENDPOINT, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            numbers: [recipient.telefono],
-            message,
-          }),
-        });
+        try {
+          const response = await fetch(SEND_ENDPOINT, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              numbers: [recipient.telefono],
+              message: cycleMessage.message,
+            }),
+          });
 
-        const payload = await response.json().catch(() => ({}));
+          const payload = await response.json().catch(() => ({}));
 
-        if (!response.ok) {
-          throw new Error(payload.error || "El backend rechazo el envio.");
-        }
+          if (!response.ok) {
+            throw new Error(payload.error || "El backend rechazo el envio.");
+          }
 
-        const result = payload.results?.[0];
-        const logItem = {
-          ...recipient,
-          number: recipient.telefono,
-          status: result?.status || "failed",
-          error: result?.error || "",
-          sid: result?.sid || "",
-        };
+          const result = payload.results?.[0];
+          const logItem = {
+            ...recipient,
+            cycleId: cycleMessage.cycleId,
+            cycleName: cycleMessage.cycleName,
+            number: recipient.telefono,
+            status: result?.status || "failed",
+            error: result?.error || "",
+            sid: result?.sid || "",
+          };
 
-        if (logItem.status === "sent") {
-          sent.push(logItem);
-          setSentLogs((current) => [...current, logItem]);
-        } else {
+          if (logItem.status === "sent") {
+            sent.push(logItem);
+            setSentLogs((current) => [...current, logItem]);
+          } else {
+            failed.push(logItem);
+            setFailedLogs((current) => [...current, logItem]);
+          }
+        } catch (error) {
+          const logItem = {
+            ...recipient,
+            cycleId: cycleMessage.cycleId,
+            cycleName: cycleMessage.cycleName,
+            number: recipient.telefono,
+            status: "failed",
+            error: error.message || "Error de conexion con el backend.",
+          };
           failed.push(logItem);
           setFailedLogs((current) => [...current, logItem]);
         }
-      } catch (error) {
-        const logItem = {
-          ...recipient,
-          number: recipient.telefono,
-          status: "failed",
-          error: error.message || "Error de conexion con el backend.",
-        };
-        failed.push(logItem);
-        setFailedLogs((current) => [...current, logItem]);
-      }
 
-      setProgress({ current: index + 1, total: recipients.length });
+        setProgress({ current: processed, total: totalSends });
+      }
     }
 
     setSendState("done");
 
-    if (recipients.length > 0 && failed.length === 0) {
+    if (totalSends > 0 && failed.length === 0) {
       setShowConfetti(true);
       window.setTimeout(() => setShowConfetti(false), 3800);
     }
+  }
+
+  function handleMultiCycleChange(enabled) {
+    setMultiCycleEnabled(enabled);
+
+    if (!enabled) {
+      setSelectedCycleIds([activeCycleId]);
+    }
+  }
+
+  function handleCycleSelect(cycleId) {
+    const cycle = cycles[cycleId];
+    if (!cycle || cycle.pendiente) return;
+
+    if (!multiCycleEnabled) {
+      setActiveCycleId(cycleId);
+      setSelectedCycleIds([cycleId]);
+      return;
+    }
+
+    const isSelected = selectedCycleIds.includes(cycleId);
+
+    if (isSelected && activeCycleId !== cycleId) {
+      setActiveCycleId(cycleId);
+      return;
+    }
+
+    if (isSelected && selectedCycleIds.length > 1) {
+      const nextSelection = selectedCycleIds.filter((id) => id !== cycleId);
+      setSelectedCycleIds(nextSelection);
+      setActiveCycleId(nextSelection[0]);
+      return;
+    }
+
+    if (!isSelected) {
+      setSelectedCycleIds([...selectedCycleIds, cycleId]);
+    }
+
+    setActiveCycleId(cycleId);
   }
 
   function handleCycleSave(cycleId, updates) {
@@ -147,11 +208,13 @@ export default function App() {
     }));
   }
 
-  const messageTooLong = message.length > SMS_LIMIT;
+  const messageTooLong = selectedMessages.some(
+    (cycleMessage) => cycleMessage.message.length > SMS_LIMIT
+  );
   const canSend =
     parseState === "done" &&
     stats.validos > 0 &&
-    !selectedCycle.pendiente &&
+    selectedMessages.length > 0 &&
     !messageTooLong &&
     sendState !== "loading";
 
@@ -179,23 +242,32 @@ export default function App() {
 
           <CycleSelector
             cycles={cycles}
-            selectedCycleId={selectedCycleId}
-            onSelect={setSelectedCycleId}
+            activeCycleId={activeCycleId}
+            selectedCycleIds={selectedCycleIds}
+            multiCycleEnabled={multiCycleEnabled}
+            onMultiCycleChange={handleMultiCycleChange}
+            onSelect={handleCycleSelect}
             onSaveCycle={handleCycleSave}
           />
 
-          <MessagePreview message={message} limit={SMS_LIMIT} stats={stats} />
+          <MessagePreview
+            messages={selectedMessages}
+            limit={SMS_LIMIT}
+            stats={stats}
+          />
 
           <SendButton
             canSend={canSend}
             disabledReason={
               messageTooLong
                 ? "El SMS supera 160 caracteres."
-                : "Carga un Excel con numeros validos."
+                : "Carga un Excel con numeros validos y selecciona al menos un ciclo."
             }
             status={sendState}
             count={stats.validos}
-            cycleName={selectedCycle.name}
+            cycleCount={selectedMessages.length}
+            cycleName={selectedMessages[0]?.cycleName || activeCycle.name}
+            totalMessages={stats.validos * selectedMessages.length}
             onConfirm={sendAllSms}
           />
         </div>

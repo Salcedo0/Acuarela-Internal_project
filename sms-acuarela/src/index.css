@@ -249,6 +249,23 @@ button:disabled {
   margin-top: 12px;
 }
 
+.multi-cycle-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 34px;
+  margin: 0 0 12px;
+  color: var(--text-main);
+  font-weight: 700;
+}
+
+.multi-cycle-toggle input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
 .cycle-tabs {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -271,6 +288,10 @@ button:disabled {
   border-color: transparent;
   background: var(--accent);
   color: #071327;
+}
+
+.cycle-tabs button.focused {
+  box-shadow: 0 0 0 3px rgba(74, 144, 217, 0.16);
 }
 
 .cycle-tabs button:disabled {
@@ -390,6 +411,29 @@ button:disabled {
   color: var(--error);
 }
 
+.message-stack {
+  display: grid;
+  gap: 12px;
+}
+
+.message-preview-item {
+  display: grid;
+  gap: 8px;
+}
+
+.message-preview-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.message-preview-meta strong {
+  font-family: "Sora", Arial, sans-serif;
+  font-size: 0.9rem;
+  letter-spacing: 0;
+}
+
 .message-preview {
   min-height: 136px;
   max-height: 220px;
@@ -471,6 +515,12 @@ button:disabled {
 .confirm-modal h2 {
   margin-bottom: 20px;
   font-size: 1.35rem;
+}
+
+.confirm-note {
+  margin: -10px 0 18px;
+  color: var(--text-muted);
+  font-weight: 700;
 }
 
 .modal-actions {
@@ -585,7 +635,7 @@ button:disabled {
 
 .log-item {
   display: grid;
-  grid-template-columns: minmax(116px, 0.9fr) minmax(86px, 0.7fr) minmax(120px, 1.2fr) minmax(120px, 1fr);
+  grid-template-columns: minmax(76px, 0.6fr) minmax(116px, 0.9fr) minmax(86px, 0.7fr) minmax(120px, 1.2fr) minmax(120px, 1fr);
   gap: 10px;
   align-items: center;
   min-height: 52px;
