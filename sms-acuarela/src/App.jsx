@@ -8,7 +8,7 @@ import { CYCLES } from "./constants/cycles.js";
 import { parseExcel } from "./utils/parseExcel.js";
 import { buildSmsMessage, SMS_LIMIT } from "./utils/message.js";
 
-const SEND_ENDPOINT = "http://localhost:3001/send-sms";
+const SEND_ENDPOINT = "https://acuarela-internalproject-production.up.railway.app/send-sms";
 
 const emptyData = {
   validos: [],
