@@ -1,4 +1,10 @@
-export default function MessagePreview({ messages, limit, stats }) {
+export default function MessagePreview({
+  messages,
+  limit,
+  stats,
+  unitLabel = "ciclos",
+  note = "",
+}) {
   const previews =
     messages.length > 0
       ? messages
@@ -15,9 +21,13 @@ export default function MessagePreview({ messages, limit, stats }) {
           <h2>Vista previa SMS</h2>
         </div>
         <span className={`char-counter ${hasInvalidMessage ? "error" : "ok"}`}>
-          {hasMultipleMessages ? `${messages.length} ciclos` : `${firstCount} / ${limit}`}
+          {hasMultipleMessages
+            ? `${messages.length} ${unitLabel}`
+            : `${firstCount} / ${limit}`}
         </span>
       </div>
+
+      {note && <p className="send-hint">{note}</p>}
 
       <div className="message-stack">
         {previews.map((item) => {
@@ -44,7 +54,9 @@ export default function MessagePreview({ messages, limit, stats }) {
         <span>{stats.validos} numeros validos</span>
         <span>{stats.invalidos} invalidos</span>
         <span>{stats.fijos} fijos</span>
-        {messages.length > 1 && <span>{messages.length} ciclos seleccionados</span>}
+        {messages.length > 1 && unitLabel === "ciclos" && (
+          <span>{messages.length} ciclos seleccionados</span>
+        )}
       </div>
     </section>
   );

@@ -8,7 +8,9 @@ export default function SendButton({
   cycleName,
   cycleCount,
   totalMessages,
+  personalizado = false,
   onConfirm,
+  onCancel,
 }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const isLoading = status === "loading";
@@ -34,6 +36,12 @@ export default function SendButton({
         {isLoading ? "Enviando SMS..." : isDone ? "Envio finalizado" : "Enviar SMS"}
       </button>
 
+      {isLoading && onCancel && (
+        <button type="button" className="ghost-button" onClick={onCancel}>
+          Detener envio
+        </button>
+      )}
+
       {!canSend && !isLoading && (
         <p className="send-hint">{disabledReason}</p>
       )}
@@ -49,10 +57,21 @@ export default function SendButton({
           >
             <p className="eyebrow">Confirmar envio</p>
             <h2 id="confirm-title">
-              ¿Enviar SMS a {count} usuarios {cycleCount > 1 ? `en ${cycleCount} ciclos` : `del ${cycleName}`}?
+              {personalizado
+                ? `¿Enviar ${count} SMS personalizados?`
+                : `¿Enviar SMS a ${count} usuarios ${
+                    cycleCount > 1 ? `en ${cycleCount} ciclos` : `del ${cycleName}`
+                  }?`}
             </h2>
-            {cycleCount > 1 && (
-              <p className="confirm-note">{totalMessages} SMS en total.</p>
+            {personalizado ? (
+              <p className="confirm-note">
+                Cada persona recibe el texto de su fila del Excel. Esta accion no
+                se puede deshacer.
+              </p>
+            ) : (
+              cycleCount > 1 && (
+                <p className="confirm-note">{totalMessages} SMS en total.</p>
+              )
             )}
             <div className="modal-actions">
               <button type="button" className="ghost-button" onClick={closeConfirm}>

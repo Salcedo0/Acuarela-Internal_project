@@ -1,20 +1,38 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import FileUploader from "./components/FileUploader.jsx";
 import CycleSelector from "./components/CycleSelector.jsx";
 import MessagePreview from "./components/MessagePreview.jsx";
 import SendButton from "./components/SendButton.jsx";
 import LogPanel from "./components/LogPanel.jsx";
 import { CYCLES } from "./constants/cycles.js";
-import { parseExcel } from "./utils/parseExcel.js";
+import { parseExcel, FORMATO_CONSOLIDADO } from "./utils/parseExcel.js";
 import { buildSmsMessage, SMS_LIMIT } from "./utils/message.js";
 
-const SEND_ENDPOINT = "https://acuarela-internalproject-production.up.railway.app/send-sms";
+// Se define en build con VITE_SEND_ENDPOINT (ver .env.example).
+// El fallback es solo para desarrollo local.
+const SEND_ENDPOINT =
+  import.meta.env.VITE_SEND_ENDPOINT || "http://localhost:3001/send-sms";
+
+// Lotes chicos: 2974 envios en una sola peticion se mueren por timeout del proxy.
+const BATCH_SIZE = 50;
 
 const emptyData = {
   validos: [],
   invalidos: [],
   total: 0,
+  formato: null,
+  duplicados: [],
+  segmentos: 0,
+  conTildes: 0,
 };
+
+function chunk(list, size) {
+  const chunks = [];
+  for (let i = 0; i < list.length; i += size) {
+    chunks.push(list.slice(i, i + size));
+  }
+  return chunks;
+}
 
 export default function App() {
   const [cycles, setCycles] = useState(() => CYCLES);
@@ -30,8 +48,11 @@ export default function App() {
   const [sendState, setSendState] = useState("idle");
   const [progress, setProgress] = useState({ current: 0, total: 0 });
   const [showConfetti, setShowConfetti] = useState(false);
+  const cancelRef = useRef(false);
 
   const activeCycle = cycles[activeCycleId];
+  // El Excel consolidado trae un mensaje ya redactado por fila: no se usan ciclos.
+  const isConsolidado = excelData.formato === FORMATO_CONSOLIDADO;
   const selectedMessages = useMemo(
     () =>
       Object.entries(cycles)
@@ -56,6 +77,17 @@ export default function App() {
     fijos: fixedCount,
   };
 
+  // En consolidado la vista previa son mensajes reales del archivo, no plantillas de ciclo.
+  const previewMessages = useMemo(() => {
+    if (!isConsolidado) return selectedMessages;
+
+    return excelData.validos.slice(0, 3).map((row) => ({
+      cycleId: `fila-${row.fila}`,
+      cycleName: row.nombre || `Fila ${row.fila}`,
+      message: row.mensaje,
+    }));
+  }, [isConsolidado, selectedMessages, excelData.validos]);
+
   async function handleFileSelect(file) {
     if (!file) return;
 
@@ -79,7 +111,125 @@ export default function App() {
     }
   }
 
+  function cancelSend() {
+    cancelRef.current = true;
+  }
+
+  // Envio consolidado: cada fila lleva su propio texto, agrupado en lotes.
+  async function sendConsolidatedSms() {
+    const recipients = excelData.validos;
+    const batches = chunk(recipients, BATCH_SIZE);
+    let processed = 0;
+
+    setSendState("loading");
+    setSentLogs([]);
+    setFailedLogs([]);
+    setProgress({ current: 0, total: recipients.length });
+    setShowConfetti(false);
+    cancelRef.current = false;
+
+    let failedCount = 0;
+
+    for (const batch of batches) {
+      if (cancelRef.current) break;
+
+      const byRef = new Map(batch.map((row) => [row.fila, row]));
+
+      try {
+        const response = await fetch(SEND_ENDPOINT, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            items: batch.map((row) => ({
+              number: row.telefono,
+              message: row.mensaje,
+              ref: row.fila,
+            })),
+          }),
+        });
+
+        const payload = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+          throw new Error(payload.error || "El backend rechazo el lote.");
+        }
+
+        const results = Array.isArray(payload.results) ? payload.results : [];
+
+        results.forEach((result) => {
+          const row = byRef.get(result.ref) || {};
+          const logItem = {
+            ...row,
+            cycleId: `fila-${row.fila ?? result.ref}`,
+            cycleName: row.nombre || "",
+            number: result.number,
+            status: result.status === "sent" ? "sent" : "failed",
+            error: result.error || "",
+            sid: result.sid || "",
+          };
+
+          if (logItem.status === "sent") {
+            setSentLogs((current) => [...current, logItem]);
+          } else {
+            failedCount += 1;
+            setFailedLogs((current) => [...current, logItem]);
+          }
+        });
+
+        // Si el backend devolvio menos resultados que envios, marcamos el resto como fallido
+        // para que ninguna fila quede en silencio.
+        const respondidos = new Set(results.map((result) => result.ref));
+        batch
+          .filter((row) => !respondidos.has(row.fila))
+          .forEach((row) => {
+            failedCount += 1;
+            setFailedLogs((current) => [
+              ...current,
+              {
+                ...row,
+                cycleId: `fila-${row.fila}`,
+                cycleName: row.nombre || "",
+                number: row.telefono,
+                status: "failed",
+                error: "El backend no devolvio resultado para esta fila.",
+              },
+            ]);
+          });
+      } catch (error) {
+        batch.forEach((row) => {
+          failedCount += 1;
+          setFailedLogs((current) => [
+            ...current,
+            {
+              ...row,
+              cycleId: `fila-${row.fila}`,
+              cycleName: row.nombre || "",
+              number: row.telefono,
+              status: "failed",
+              error: error.message || "Error de conexion con el backend.",
+            },
+          ]);
+        });
+      }
+
+      processed += batch.length;
+      setProgress({ current: processed, total: recipients.length });
+    }
+
+    setSendState("done");
+
+    if (!cancelRef.current && recipients.length > 0 && failedCount === 0) {
+      setShowConfetti(true);
+      window.setTimeout(() => setShowConfetti(false), 3800);
+    }
+  }
+
   async function sendAllSms() {
+    if (isConsolidado) {
+      await sendConsolidatedSms();
+      return;
+    }
+
     const recipients = excelData.validos;
     const messagesToSend = selectedMessages;
     const totalSends = recipients.length * messagesToSend.length;
@@ -90,12 +240,17 @@ export default function App() {
     setFailedLogs([]);
     setProgress({ current: 0, total: totalSends });
     setShowConfetti(false);
+    cancelRef.current = false;
 
     const sent = [];
     const failed = [];
 
     for (const cycleMessage of messagesToSend) {
+      if (cancelRef.current) break;
+
       for (const recipient of recipients) {
+        if (cancelRef.current) break;
+
         processed += 1;
 
         try {
@@ -153,7 +308,7 @@ export default function App() {
 
     setSendState("done");
 
-    if (totalSends > 0 && failed.length === 0) {
+    if (!cancelRef.current && totalSends > 0 && failed.length === 0) {
       setShowConfetti(true);
       window.setTimeout(() => setShowConfetti(false), 3800);
     }
@@ -208,13 +363,13 @@ export default function App() {
     }));
   }
 
-  const messageTooLong = selectedMessages.some(
-    (cycleMessage) => cycleMessage.message.length > SMS_LIMIT
-  );
+  const messageTooLong =
+    !isConsolidado &&
+    selectedMessages.some((cycleMessage) => cycleMessage.message.length > SMS_LIMIT);
   const canSend =
     parseState === "done" &&
     stats.validos > 0 &&
-    selectedMessages.length > 0 &&
+    (isConsolidado || selectedMessages.length > 0) &&
     !messageTooLong &&
     sendState !== "loading";
 
@@ -240,20 +395,30 @@ export default function App() {
             onFileSelect={handleFileSelect}
           />
 
-          <CycleSelector
-            cycles={cycles}
-            activeCycleId={activeCycleId}
-            selectedCycleIds={selectedCycleIds}
-            multiCycleEnabled={multiCycleEnabled}
-            onMultiCycleChange={handleMultiCycleChange}
-            onSelect={handleCycleSelect}
-            onSaveCycle={handleCycleSave}
-          />
+          {isConsolidado ? (
+            <ConsolidatedSummary data={excelData} />
+          ) : (
+            <CycleSelector
+              cycles={cycles}
+              activeCycleId={activeCycleId}
+              selectedCycleIds={selectedCycleIds}
+              multiCycleEnabled={multiCycleEnabled}
+              onMultiCycleChange={handleMultiCycleChange}
+              onSelect={handleCycleSelect}
+              onSaveCycle={handleCycleSave}
+            />
+          )}
 
           <MessagePreview
-            messages={selectedMessages}
+            messages={previewMessages}
             limit={SMS_LIMIT}
             stats={stats}
+            unitLabel={isConsolidado ? "ejemplos" : "ciclos"}
+            note={
+              isConsolidado
+                ? `Mensaje personalizado por fila. Se muestran ${previewMessages.length} de ${stats.validos}.`
+                : ""
+            }
           />
 
           <SendButton
@@ -261,14 +426,24 @@ export default function App() {
             disabledReason={
               messageTooLong
                 ? "El SMS supera 160 caracteres."
-                : "Carga un Excel con numeros validos y selecciona al menos un ciclo."
+                : isConsolidado
+                  ? "Carga un Excel con numeros validos."
+                  : "Carga un Excel con numeros validos y selecciona al menos un ciclo."
             }
             status={sendState}
             count={stats.validos}
-            cycleCount={selectedMessages.length}
-            cycleName={selectedMessages[0]?.cycleName || activeCycle.name}
-            totalMessages={stats.validos * selectedMessages.length}
+            cycleCount={isConsolidado ? 1 : selectedMessages.length}
+            cycleName={
+              isConsolidado
+                ? "mensaje personalizado"
+                : selectedMessages[0]?.cycleName || activeCycle.name
+            }
+            totalMessages={
+              isConsolidado ? stats.validos : stats.validos * selectedMessages.length
+            }
+            personalizado={isConsolidado}
             onConfirm={sendAllSms}
+            onCancel={cancelSend}
           />
         </div>
 
@@ -281,6 +456,50 @@ export default function App() {
         />
       </section>
     </main>
+  );
+}
+
+function ConsolidatedSummary({ data }) {
+  const extras = Math.max(0, data.segmentos - data.validos.length);
+
+  return (
+    <section className="panel">
+      <div className="panel-heading">
+        <div>
+          <p className="eyebrow">Archivo consolidado</p>
+          <h2>Mensaje por destinatario</h2>
+        </div>
+      </div>
+
+      <div className="cycle-detail">
+        <div className="cycle-row">
+          <span>Hoja</span>
+          <strong>{data.hoja}</strong>
+        </div>
+        <div className="cycle-row">
+          <span>Segmentos a facturar</span>
+          <strong>{data.segmentos}</strong>
+        </div>
+        <div className="cycle-row">
+          <span>Celulares repetidos</span>
+          <strong>{data.duplicados.length}</strong>
+        </div>
+      </div>
+
+      {extras > 0 && (
+        <p className="send-hint">
+          {extras} segmento(s) extra por tildes fuera de GSM-7. La app ya las
+          normaliza automaticamente antes de enviar.
+        </p>
+      )}
+
+      {data.duplicados.length > 0 && (
+        <p className="form-error">
+          Hay {data.duplicados.length} celular(es) repetidos: esas personas
+          recibiran mas de un SMS.
+        </p>
+      )}
+    </section>
   );
 }
 

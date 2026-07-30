@@ -8,6 +8,8 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3001;
 const SMS_LIMIT = 160;
+const MAX_BATCH = 200;
+const SEND_DELAY_MS = Number(process.env.SEND_DELAY_MS || 100);
 
 const {
   TWILIO_ACCOUNT_SID,
@@ -27,7 +29,7 @@ app.use(
     origin: ['http://localhost:5173', 'https://acuarelasms.acueductolaacuarela.com']
   })
 );
-app.use(express.json({ limit: "1mb" }));
+app.use(express.json({ limit: "2mb" }));
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -46,41 +48,85 @@ app.get("/health", (_req, res) => {
   res.json({
     ok: true,
     twilioConfigured: hasTwilioConfig,
+    maxBatch: MAX_BATCH,
   });
 });
 
-// Body: { numbers: ["+573112139148"], message: "texto del SMS" }
+// Acepta dos formas:
+//   1. Personalizado: { items: [{ number, message, ref }] }  -> un texto distinto por numero
+//   2. Mensaje unico: { numbers: [...], message: "texto" }   -> compatibilidad con el flujo por ciclos
+function normalizePayload(body) {
+  const { items, numbers, message } = body || {};
+
+  if (Array.isArray(items)) {
+    if (items.length === 0) {
+      return { error: "El arreglo items esta vacio." };
+    }
+
+    return {
+      list: items.map((item) => ({
+        number: item?.number,
+        message: typeof item?.message === "string" ? item.message : "",
+        ref: item?.ref ?? null,
+      })),
+    };
+  }
+
+  if (Array.isArray(numbers)) {
+    if (numbers.length === 0) {
+      return { error: "Debe enviar un arreglo de numeros en el campo numbers." };
+    }
+
+    if (typeof message !== "string" || message.trim().length === 0) {
+      return { error: "Debe enviar el texto del SMS en el campo message." };
+    }
+
+    return { list: numbers.map((number) => ({ number, message, ref: null })) };
+  }
+
+  return {
+    error: "Debe enviar items: [{number, message}] o numbers: [] junto con message.",
+  };
+}
+
 app.post("/send-sms", async (req, res) => {
-  const { numbers, message } = req.body || {};
+  const { list, error } = normalizePayload(req.body);
 
-  if (!Array.isArray(numbers) || numbers.length === 0) {
-    return res.status(400).json({
-      error: "Debe enviar un arreglo de numeros en el campo numbers.",
-    });
+  if (error) {
+    return res.status(400).json({ error });
   }
 
-  if (typeof message !== "string" || message.trim().length === 0) {
+  if (list.length > MAX_BATCH) {
     return res.status(400).json({
-      error: "Debe enviar el texto del SMS en el campo message.",
-    });
-  }
-
-  if (message.length > SMS_LIMIT) {
-    return res.status(400).json({
-      error: `El SMS tiene ${message.length} caracteres y supera el limite de ${SMS_LIMIT}.`,
+      error: `El lote trae ${list.length} envios y supera el maximo de ${MAX_BATCH}. Divide el envio en lotes mas pequenos.`,
     });
   }
 
   const results = [];
 
-  for (const number of numbers) {
+  for (const { number, message, ref } of list) {
     if (!validateE164Colombia(number)) {
       results.push({
         number,
+        ref,
         status: "failed",
         error: "Numero E.164 invalido para Colombia",
       });
-      await delay(100);
+      continue;
+    }
+
+    if (typeof message !== "string" || message.trim().length === 0) {
+      results.push({ number, ref, status: "failed", error: "Mensaje vacio" });
+      continue;
+    }
+
+    if (message.length > SMS_LIMIT) {
+      results.push({
+        number,
+        ref,
+        status: "failed",
+        error: `El SMS tiene ${message.length} caracteres y supera el limite de ${SMS_LIMIT}.`,
+      });
       continue;
     }
 
@@ -95,21 +141,13 @@ app.post("/send-sms", async (req, res) => {
         to: number,
       });
 
-      results.push({
-        number,
-        status: "sent",
-        sid: twilioMessage.sid,
-      });
-    } catch (error) {
-      results.push({
-        number,
-        status: "failed",
-        error: publicError(error),
-      });
+      results.push({ number, ref, status: "sent", sid: twilioMessage.sid });
+    } catch (err) {
+      results.push({ number, ref, status: "failed", error: publicError(err) });
     }
 
     // Pausa simple para no saturar Twilio ni disparar envios masivos simultaneos.
-    await delay(100);
+    await delay(SEND_DELAY_MS);
   }
 
   res.json({ results });

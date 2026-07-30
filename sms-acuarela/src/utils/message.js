@@ -18,11 +18,9 @@ const MONTHS = {
 export function buildSmsMessage(cycle) {
   if (!cycle || cycle.pendiente) return "";
 
-  const fechaOportuna = toShortDate(cycle.fechaOportuna);
-  const fechaSuspension = toShortDate(cycle.fechaSuspension);
+  const fechaMaxima = toShortDate(cycle.fechaMaxima);
 
-  // Version compacta para mantener el SMS dentro de un solo mensaje.
-  return `Acueducto La Acuarela: Pago oportuno hasta ${fechaOportuna}. Evite suspension: pague antes de ${fechaSuspension}. Pague aqui: https://acueductolaacuarela.com/pago-factura`;
+  return `Acueducto La Acuarela: Pague antes de ${fechaMaxima} para evitar suspension. Pague aqui: https://acueductolaacuarela.com/pago-factura`;
 }
 
 function toShortDate(dateText) {

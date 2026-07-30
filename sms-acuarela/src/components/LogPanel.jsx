@@ -14,26 +14,32 @@ export default function LogPanel({ sent, failed, skipped, progress, status }) {
     () => [
       ...sent.map((row) => ({
         estado: "enviado",
+        fila: row.fila ?? "",
         ciclo: row.cycleName,
         telefono: row.number,
         cedula: row.cedula,
         direccion: row.direccion,
+        mensaje: row.mensaje || "",
         detalle: row.sid || "",
       })),
       ...failed.map((row) => ({
         estado: "fallido",
+        fila: row.fila ?? "",
         ciclo: row.cycleName,
         telefono: row.number,
         cedula: row.cedula,
         direccion: row.direccion,
+        mensaje: row.mensaje || "",
         detalle: row.error || "",
       })),
       ...skipped.map((row) => ({
         estado: "no enviado",
+        fila: row.fila ?? "",
         ciclo: "",
         telefono: row.telefonoOriginal,
         cedula: row.cedula,
         direccion: row.direccion,
+        mensaje: row.mensaje || "",
         detalle: row.razon,
       })),
     ],
@@ -48,7 +54,16 @@ export default function LogPanel({ sent, failed, skipped, progress, status }) {
   }
 
   function exportCsv() {
-    const headers = ["estado", "ciclo", "telefono", "cedula", "direccion", "detalle"];
+    const headers = [
+      "estado",
+      "fila",
+      "ciclo",
+      "telefono",
+      "cedula",
+      "direccion",
+      "mensaje",
+      "detalle",
+    ];
     const lines = [
       headers.join(","),
       ...csvRows.map((row) =>

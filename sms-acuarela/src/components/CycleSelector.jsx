@@ -1,11 +1,6 @@
 import { useEffect, useState } from "react";
 
-const DATE_FIELDS = [
-  { key: "fechaSMS", label: "SMS" },
-  { key: "fechaOportuna", label: "Pago oportuno" },
-  { key: "fechaSuspension", label: "Suspension" },
-  { key: "fechaMaxima", label: "Fecha maxima" },
-];
+const DATE_FIELDS = [{ key: "fechaMaxima", label: "Fecha maxima" }];
 
 export default function CycleSelector({
   cycles,
@@ -117,9 +112,6 @@ export default function CycleSelector({
                 Editar
               </button>
             </div>
-            <Detail label="SMS" value={selectedCycle.fechaSMS} />
-            <Detail label="Pago oportuno" value={selectedCycle.fechaOportuna} />
-            <Detail label="Suspension" value={selectedCycle.fechaSuspension} />
             <Detail label="Fecha maxima" value={selectedCycle.fechaMaxima} />
           </>
         )}
